@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Fire Detection System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            text-align: center;
+            padding: 20px;
+            transition: background-color 0.5s;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
+            max-width: 600px;
+            margin: auto;
+            margin-bottom: 20px;
+        }
+        h1 { color: #333; }
+        .status-box {
+            padding: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            border-radius: 8px;
+            margin: 20px 0;
+            background-color: #e2e8f0;
+            color: #2d3748;
+        }
+        .timer { font-size: 40px; font-weight: bold; color: #e53e3e; display: none; }
+        .btn {
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+            margin-left: 10px;
+            margin-right: 10px;
+        }
+        .btn-dismiss { background-color: #48bb78; display: none; }
+        .btn-dismiss:hover { background-color: #38a169; }
+        .btn-reset { background-color: #3182ce; display: none; }
+        .btn-reset:hover { background-color: #2b6cb0; }
+        
+        .log-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.1);
+            max-width: 600px;
+            margin: auto;
+            text-align: left;
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; color: #333; }
+        
+        body.fire-active { background-color: #fed7d7; }
+        .status-box.danger { background-color: #e53e3e; color: white; }
+        .status-box.authorities { background-color: #1a202c; color: #e2e8f0; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🔥 IoT Fire Detection System</h1>
+    <p>Monitoring Room Status via MQTT WAN Network</p>
+
+    <div id="statusBox" class="status-box">SYSTEM NORMAL - NO FIRE DETECTED</div>
+    
+    <div id="timerDisplay" class="timer">30s</div>
+
+    <div>
+        <button id="dismissBtn" class="btn btn-dismiss" onclick="dismissAlarm()">DISMISS ALARM</button>
+        <button id="resetBtn" class="btn btn-reset" onclick="resetSystem()">RESET SYSTEM</button>
+    </div>
+</div>
+
+<div class="log-container">
+    <h2>📜 System Incident History</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th>Event Description</th>
+            </tr>
+        </thead>
+        <tbody id="logTableBody"></tbody>
+    </table>
+</div>
+
+<script>
+    // Using the highly reliable Google audio link
+    const alarmSound = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+    alarmSound.loop = true; 
+
+    setInterval(fetchStatus, 1000);
+
+    function fetchStatus() {
+        fetch('/api/status')
+            .then(response => response.json())
+            .then(data => {
+                const statusBox = document.getElementById("statusBox");
+                const timerDisplay = document.getElementById("timerDisplay");
+                const dismissBtn = document.getElementById("dismissBtn");
+                const resetBtn = document.getElementById("resetBtn");
+                const logTableBody = document.getElementById("logTableBody");
+
+                // Update Logs
+                logTableBody.innerHTML = "";
+                data.logs.forEach(log => {
+                    logTableBody.innerHTML += `<tr><td>${log.time}</td><td>${log.event}</td></tr>`;
+                });
+
+                // Update Alarm Status
+                if (data.state.fire_detected) {
+                    document.body.classList.add("fire-active");
+                    
+                    if (alarmSound.paused && !data.state.authorities_notified) {
+                        alarmSound.play().catch(e => console.log("Audio blocked by browser. Click anywhere on the page to allow."));
+                    }
+                    
+                    if (data.state.authorities_notified) {
+                        statusBox.innerHTML = "🚨 ESCALATION: AUTHORITIES HAVE BEEN NOTIFIED! 🚨";
+                        statusBox.className = "status-box authorities";
+                        timerDisplay.style.display = "none";
+                        dismissBtn.style.display = "none";
+                        resetBtn.style.display = "inline-block";
+                        alarmSound.pause(); 
+                    } else {
+                        statusBox.innerHTML = "⚠️ FIRE DETECTED! SPRINKLERS ACTIVE! ⚠️";
+                        statusBox.className = "status-box danger";
+                        timerDisplay.style.display = "block";
+                        timerDisplay.innerHTML = "Calling authorities in: " + data.state.time_left + "s";
+                        dismissBtn.style.display = "inline-block";
+                        resetBtn.style.display = "none";
+                    }
+                } else {
+                    document.body.classList.remove("fire-active");
+                    statusBox.innerHTML = "✅ SYSTEM NORMAL - NO FIRE DETECTED";
+                    statusBox.className = "status-box";
+                    timerDisplay.style.display = "none";
+                    dismissBtn.style.display = "none";
+                    resetBtn.style.display = "none";
+                    
+                    alarmSound.pause();
+                    alarmSound.currentTime = 0;
+                }
+            });
+    }
+
+    function dismissAlarm() { fetch('/api/dismiss').then(() => fetchStatus()); }
+    function resetSystem() { fetch('/api/reset').then(() => fetchStatus()); }
+</script>
+
+</body>
+</html>
